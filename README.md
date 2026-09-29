@@ -21,7 +21,7 @@ We can bootstrap our application. Create a directory and clone the repository on
 1. Clone this repo and install dependencies
 
 ```bash
-git clone https://github.com/couchbaselabs/try-ottoman-ts.git
+git clone https://github.com/couchbase-examples/try-ottoman-ts.git
 cd try-ottoman-ts
 yarn install
 ```
@@ -31,9 +31,12 @@ yarn install
     ```
     cp .env.example .env
     ```
-    - Set the appropriate variables in the `OTTOMAN_CONNECTION_STRING`:
-        - The format of the connection string is: `couchbase://<cluster_ip>:<cluster_port>/<bucket_name>@<username>:<password>`
-        - The connection string in `.env.example` will work for a locally hosted Couchbase cluster with username `Administrator` and password `password`. Change the string as needed to fit your cluster.
+    - Set the connection variables for your cluster:
+        - `DB_CONN_STR`: the cluster connection string, e.g. `couchbase://localhost`
+        - `DB_USERNAME` / `DB_PASSWORD`: the cluster credentials
+        - `DB_BUCKET_NAME`: the bucket to use (`travel-sample`)
+        - `APP_PORT`: the port the API listens on (defaults to `4500`)
+        - The values in `.env.example` will work for a locally hosted Couchbase cluster with username `Administrator` and password `password`. Change them as needed to fit your cluster.
         - This API uses the `travel-sample` bucket, which you'll need to add to your cluster for proper functionality. [Learn more about installing sample buckets here.](https://docs.couchbase.com/server/current/manage/manage-settings/install-sample-buckets.html)
     
 3. Run the API example
@@ -41,6 +44,28 @@ yarn install
 ```bash
 yarn start
 ```
+
+## Testing
+
+The test suite uses [Jest](https://jestjs.io/) and [supertest](https://github.com/ladjs/supertest). It is split into two projects:
+
+- **Unit tests** (`test/unit`) cover validators, custom types and response handling, and don't need a database.
+- **Integration tests** (`test/integration`) call every REST endpoint against a real Couchbase cluster with the `travel-sample` bucket loaded.
+
+The quickest way to get a cluster for the tests is the bundled script. It starts Couchbase Server in Docker (container `try-ottoman-cb`, ports `8091-8097` and `11210`), initializes it, and loads `travel-sample`:
+
+```bash
+yarn couchbase:start   # safe to re-run; skips steps that are already done
+yarn test              # all unit + integration tests
+yarn test:unit         # unit tests only, no Couchbase needed
+yarn typecheck         # tsc --noEmit over src/ and test/
+```
+
+The tests read the same `DB_*` variables as the app, so you can also point them at your own cluster.
+
+The [Tests workflow](.github/workflows/tests.yml) runs the typecheck, unit tests and integration tests (against the same Docker setup) on every pull request and on pushes to `main`.
+
+> The Node.js version is set in `.nvmrc`. It is Node 16 because the Couchbase SDK version this project uses (3.2.2) only publishes prebuilt binaries up to Node 16. Update `.nvmrc` when upgrading the SDK.
 
 ## Tutorial Project (Travel-Sample) Goals
 
@@ -75,7 +100,8 @@ Next, a custom validator function is defined to make sure that a phone number in
 addValidators({
   phone: function(value) {
       const phone = /^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$/;
-      if(value && !value.match(phone)) {
+      // Ottoman's String type runs validators on String(value), so a missing phone arrives as 'undefined'.
+      if(value && value !== 'undefined' && !value.match(phone)) {
         throw new Error('Phone number is invalid.');
       }
   },
@@ -215,7 +241,7 @@ const AirportSchema = new Schema({
  tz: { type: String, required: true },
 });
 
-AirportSchema.index.findByName = { by: 'name', type: 'n1ql' };
+AirportSchema.index.findByName = { by: 'airportname', type: 'n1ql' };
 
 const AirportModel = model('airport', AirportSchema);
 
@@ -233,69 +259,101 @@ Now that the models are defined above, the controller functionality is defined i
 The `index.ts` file is the entry point to the application and defines how the application will function. The code within the file is as follows:
 
 ```typescript
-import {start} from 'ottoman';
-require('./ottoman-global-config');
-import App from './app';
-import HotelsController from './hotels/hotels.controller';
-import AirportsController from './airports/airports.controller';
-import FlightController from './flights/flights.controller';
+import { ottoman, connectOttoman } from './db';
+import { createApp } from './app';
 
-const app = new App(
-    [
-        new HotelsController('/hotels'),
-        new AirportsController('/airports'),
-        new FlightController('/flightPaths'),
-    ],
-    4500
-);
+const app = createApp(Number(process.env.APP_PORT || 4500));
 
-start().then(() => {
-    console.log('All the indexes were registered');
+const main = async () => {
+  try {
+    await connectOttoman();
+    await ottoman.start();
     app.listen();
-}).catch(e => console.log(e));
+  } catch (e) {
+    console.log(e);
+    process.exit(1);
+  }
+}
+
+main();
+```
+
+`connectOttoman` lives in `db.ts` and connects using the `DB_*` environment variables:
+
+```typescript
+import { ottoman } from './ottoman-global-config';
+
+const connectOttoman = async () => {
+  // Couchbase SDK 3.2 times out immediately if it connects in the same event-loop tick as a
+  // long synchronous startup (e.g. ts-node compiling the app), so yield to the event loop first.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return ottoman.connect({
+    bucketName: process.env.DB_BUCKET_NAME || 'travel-sample',
+    connectionString: process.env.DB_CONN_STR || 'couchbase://localhost',
+    username: process.env.DB_USERNAME || 'Administrator',
+    password: process.env.DB_PASSWORD || 'password',
+  });
+};
+
+export { ottoman, connectOttoman };
 ```
 
 The `app.ts` file define the expressjs and server configuration:
 
 ```typescript
-import express, {Request, Response, Error} from 'express';
+import path from 'path';
+import express, { NextFunction, Request, Response } from 'express';
 import * as swaggerUi from 'swagger-ui-express';
 import * as YAML from 'yamljs';
-import {ControllerType} from "./shared/controller.type";
+import { ControllerType } from "./shared/controller.type";
+import HotelsController from './hotels/hotels.controller';
+import AirportsController from './airports/airports.controller';
+import FlightController from './flights/flights.controller';
 
 class App {
-    public app: express.Application;
-    public port: number;
+  public app: express.Application;
+  public port: number;
 
-    constructor(controllers: ControllerType[], port: number) {
-        this.app = express();
-        this.port = port;
-        this.app.use(express.json());
-        this.app.get('/', (req, res) => {
-            res.send('I am ready!!');
-        });
-        this.app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(YAML.load('./swagger.yaml')));
+  constructor(controllers: ControllerType[], port: number) {
+    this.app = express();
+    this.port = port;
+    this.app.use(express.json());
+    this.app.get('/', (req, res) => {
+      res.send('I am ready!!');
+    });
+    this.app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(YAML.load(path.join(__dirname, '..', 'swagger.yaml'))));
 
-        this.app.use((err: Error, req: Request, res: Response, next) => {
-            return res.status(500).error({error: err.toString()}).json();
-        });
-        this.initializeControllers(controllers);
-    }
+    this.initializeControllers(controllers);
 
-    private initializeControllers(controllers: ControllerType[]) {
-        controllers.forEach((controller) => {
-            this.app.use(controller.path, controller.router);
-        });
-    }
+    this.app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+      return res.status(500).json({ message: err.toString() });
+    });
+  }
 
-    public listen() {
-        this.app.listen(this.port, () => {
-            console.log(`API started at http://localhost:${this.port}`);
-            console.log(`API docs at http://localhost:${this.port}/api-docs/`);
-        });
-    }
+  private initializeControllers(controllers: ControllerType[]) {
+    controllers.forEach((controller) => {
+      this.app.use(controller.path, controller.router);
+    });
+  }
+
+  public listen() {
+    return this.app.listen(this.port, () => {
+      console.log(`API started at http://localhost:${this.port}`);
+      console.log(`API docs at http://localhost:${this.port}/api-docs/`);
+    });
+  }
 
 }
+
+export const createApp = (port: number) =>
+  new App(
+    [
+      new HotelsController('/hotels'),
+      new AirportsController('/airports'),
+      new FlightController('/flightPaths'),
+    ],
+    port
+  );
 
 export default App;
 ```

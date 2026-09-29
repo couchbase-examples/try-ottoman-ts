@@ -1,0 +1,53 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DB_CONN_STR: couchbase://localhost
+      DB_USERNAME: Administrator
+      DB_PASSWORD: password
+      DB_BUCKET_NAME: travel-sample
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Start Couchbase first so it boots while dependencies install.
+      - name: Start Couchbase container
+        run: bash scripts/start-couchbase.sh --container-only
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Typecheck
+        run: yarn typecheck
+
+      - name: Unit tests
+        run: yarn test:unit
+
+      - name: Initialize Couchbase and load travel-sample
+        run: yarn couchbase:start
+
+      - name: Integration tests
+        run: yarn test --selectProjects integration
+
+      - name: Couchbase logs
+        if: failure()
+        run: docker logs try-ottoman-cb 2>&1 | tail -200

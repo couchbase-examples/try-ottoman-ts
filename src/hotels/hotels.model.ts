@@ -1,11 +1,15 @@
 import { addValidators, Schema, model } from 'ottoman';
+// Models register on the default Ottoman instance, so make sure it exists first.
+import '../ottoman-global-config';
 import GeolocationSchema from '../shared/geolocation.schema';
 import LinkType from '../shared/link.type';
 
 addValidators({
   phone: (value: any) => {
     const regex = /^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$/;
-    if (value && !value.match(regex)) {
+    // Ottoman's String type runs validators on String(value), so a missing phone arrives as 'undefined'.
+    // That can't be told apart from a literal "undefined", which is accepted as a known limitation.
+    if (value && value !== 'undefined' && !value.match(regex)) {
       throw new Error('Phone number is invalid.');
     }
   },
@@ -58,4 +62,5 @@ HotelSchema.index.findViewCountry = { by: 'email', type: 'view' };
 HotelSchema.index.findRefName = { by: 'name', type: 'refdoc' };
 const HotelModel = model('hotel', HotelSchema);
 
+export { HotelSchema };
 export default HotelModel;
