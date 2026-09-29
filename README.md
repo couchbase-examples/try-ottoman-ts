@@ -65,7 +65,7 @@ The tests read the same `DB_*` variables as the app, so you can also point them 
 
 The [Tests workflow](.github/workflows/tests.yml) runs the typecheck, unit tests and integration tests (against the same Docker setup) on every pull request and on pushes to `main`.
 
-> The Node.js version is set in `.nvmrc`. It is Node 16 because the Couchbase SDK version this project uses (3.2.2) only publishes prebuilt binaries up to Node 16. Update `.nvmrc` when upgrading the SDK.
+> The Node.js version is set in `.nvmrc` (Node 24, the current LTS line). CI reads the same file, so update `.nvmrc` to change the runtime everywhere.
 
 ## Tutorial Project (Travel-Sample) Goals
 
