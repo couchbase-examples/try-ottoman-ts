@@ -3,6 +3,7 @@ import AirportModel from './airports.model';
 import makeResponse from '../shared/make.response';
 import { FindOptions } from 'ottoman';
 import { CustomRoute } from '../shared/custom.route';
+import { containsPattern, intParam } from '../shared/query-params';
 
 class AirportsController extends CustomRoute {
 
@@ -19,8 +20,13 @@ class AirportsController extends CustomRoute {
     this.router.get('/', async (req: Request, res: Response) => {
       await makeResponse(res, async () => {
         const { limit, search, skip } = req.query;
-        const options = new FindOptions({ limit: Number(limit || 50), skip: Number(skip || 0) });
-        const filter = search ? { airportname: { $like: `%${search}%` } } : {};
+        const options = new FindOptions({
+          limit: intParam(limit, 'limit') ?? 50,
+          skip: intParam(skip, 'skip') ?? 0,
+          // A stable order so that limit/skip pages don't overlap.
+          sort: { airportname: 'ASC', id: 'ASC' },
+        });
+        const filter = search ? { airportname: { $like: containsPattern(search) } } : {};
         const result = await AirportModel.find(filter, options);
         const { rows: items } = result;
         return {

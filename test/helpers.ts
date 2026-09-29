@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+import { afterAll, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import supertest from 'supertest';
 import { ottoman, connectOttoman } from '../src/db';
 import { createApp } from '../src/app';
@@ -12,6 +12,8 @@ type Doc = Record<string, unknown>;
  */
 export const setupApi = (): Api => {
   beforeAll(async () => {
+    // makeResponse logs every error, including the 400s and 404s these tests trigger on purpose.
+    jest.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
       await connectOttoman();
     } catch (e) {
@@ -25,6 +27,7 @@ export const setupApi = (): Api => {
 
   afterAll(async () => {
     await ottoman.close();
+    jest.restoreAllMocks();
   });
 
   return supertest(createApp(0).app);

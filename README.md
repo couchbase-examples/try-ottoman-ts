@@ -58,7 +58,7 @@ The quickest way to get a cluster for the tests is the bundled script. It starts
 yarn couchbase:start   # safe to re-run; skips steps that are already done
 yarn test              # all unit + integration tests
 yarn test:unit         # unit tests only, no Couchbase needed
-yarn typecheck         # tsc --noEmit
+yarn typecheck         # tsc --noEmit over src/ and test/
 ```
 
 The tests read the same `DB_*` variables as the app, so you can also point them at your own cluster.
@@ -100,7 +100,8 @@ Next, a custom validator function is defined to make sure that a phone number in
 addValidators({
   phone: function(value) {
       const phone = /^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$/;
-      if(value && !value.match(phone)) {
+      // Ottoman's String type runs validators on String(value), so a missing phone arrives as 'undefined'.
+      if(value && value !== 'undefined' && !value.match(phone)) {
         throw new Error('Phone number is invalid.');
       }
   },

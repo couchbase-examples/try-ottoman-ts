@@ -37,12 +37,22 @@ describe('/hotels', () => {
       expect(res.body.items).toHaveLength(5);
     });
 
-    it('honors skip', async () => {
-      const all = await api.get('/hotels').query({ search: 'Inn', limit: 3 }).expect(200);
+    it('pages through results in name order with skip', async () => {
+      const all = await api.get('/hotels').query({ search: 'Inn', limit: 4 }).expect(200);
       const skipped = await api.get('/hotels').query({ search: 'Inn', limit: 3, skip: 1 }).expect(200);
-      expect(all.body.items).toHaveLength(3);
-      expect(skipped.body.items).toHaveLength(3);
-      expect(skipped.body.items.map((h: any) => h.id)).not.toEqual(all.body.items.map((h: any) => h.id));
+      const names = all.body.items.map((h: any) => h.name);
+      expect(names).toHaveLength(4);
+      expect(names).toEqual([...names].sort());
+      expect(skipped.body.items.map((h: any) => h.id)).toEqual(all.body.items.slice(1).map((h: any) => h.id));
+    });
+
+    it('treats quotes in search as text, not SQL++', async () => {
+      const res = await api.get('/hotels').query({ search: 'x" OR "1"="1' }).expect(200);
+      expect(res.body.items).toEqual([]);
+    });
+
+    it('responds 400 for a non-numeric limit', async () => {
+      await api.get('/hotels').query({ limit: 'abc' }).expect(400);
     });
   });
 

@@ -15,4 +15,9 @@ describe('App', () => {
     expect(res.headers['content-type']).toMatch(/html/);
     expect(res.text).toContain('swagger-ui');
   });
+
+  it('responds 400 for a malformed JSON body', async () => {
+    const res = await api.post('/hotels').set('Content-Type', 'application/json').send('{"name":').expect(400);
+    expect(res.body.message).toMatch(/JSON/);
+  });
 });

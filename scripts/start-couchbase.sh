@@ -9,10 +9,21 @@
 
 set -euo pipefail
 
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+
+# Prints the value of $1 from the project's .env file, if there is one.
+env_file_value() {
+  [ -f "$ROOT/.env" ] || return 0
+  sed -n "s/^$1=//p" "$ROOT/.env" | tail -n 1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\\(.*\\)'$/\\1/"
+}
+
+# Like the app (dotenv), use the environment first, then .env, then the defaults.
 CONTAINER=${CB_CONTAINER:-try-ottoman-cb}
 IMAGE=${CB_IMAGE:-couchbase/server:enterprise-7.6.8}
-USERNAME=${DB_USERNAME:-Administrator}
-PASSWORD=${DB_PASSWORD:-password}
+USERNAME=${DB_USERNAME:-$(env_file_value DB_USERNAME)}
+USERNAME=${USERNAME:-Administrator}
+PASSWORD=${DB_PASSWORD:-$(env_file_value DB_PASSWORD)}
+PASSWORD=${PASSWORD:-password}
 TIMEOUT=${CB_TIMEOUT:-600}
 SAMPLE=travel-sample
 
@@ -60,7 +71,12 @@ sample_bucket_exists() { rest "http://localhost:8091/pools/default/buckets/$SAMP
 install_sample() {
   rest -X POST http://localhost:8091/sampleBuckets/install -d "[\"$SAMPLE\"]" || sample_bucket_exists
 }
-sample_load_finished() { ! rest http://localhost:8091/pools/default/tasks | grep -q loadingSampleBucket; }
+sample_load_finished() {
+  local tasks
+  # Fetch first so a failed request counts as "not finished" rather than "no loading task".
+  tasks=$(rest http://localhost:8091/pools/default/tasks) || return 1
+  ! grep -q loadingSampleBucket <<<"$tasks"
+}
 
 indexes_online() {
   local total pending

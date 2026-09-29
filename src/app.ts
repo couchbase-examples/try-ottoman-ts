@@ -22,8 +22,9 @@ class App {
 
     this.initializeControllers(controllers);
 
-    this.app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-      return res.status(500).json({ message: err.toString() });
+    // Keep the status set by middleware errors, e.g. 400 from express.json() for a malformed body.
+    this.app.use((err: Error & { status?: number }, req: Request, res: Response, next: NextFunction) => {
+      return res.status(err.status || 500).json({ message: err.toString() });
     });
   }
 

@@ -25,6 +25,20 @@ describe('/airports', () => {
       const res = await api.get('/airports').query({ limit: 3 }).expect(200);
       expect(res.body.items).toHaveLength(3);
     });
+
+    it('pages through results in name order with skip', async () => {
+      const all = await api.get('/airports').query({ search: 'Intl', limit: 4 }).expect(200);
+      const skipped = await api.get('/airports').query({ search: 'Intl', limit: 3, skip: 1 }).expect(200);
+      const names = all.body.items.map((a: any) => a.airportname);
+      expect(names).toHaveLength(4);
+      expect(names).toEqual([...names].sort());
+      expect(skipped.body.items.map((a: any) => a.id)).toEqual(all.body.items.slice(1).map((a: any) => a.id));
+    });
+
+    it('treats quotes in search as text, not SQL++', async () => {
+      const res = await api.get('/airports').query({ search: 'x" OR "1"="1' }).expect(200);
+      expect(res.body.items).toEqual([]);
+    });
   });
 
   describe('GET /airports/:id', () => {

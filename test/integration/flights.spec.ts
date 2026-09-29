@@ -1,4 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
+import AirportModel from '../../src/airports/airports.model';
 import FlightModel from '../../src/flights/flights.model';
 import { describeCrud, setupApi } from '../helpers';
 
@@ -47,6 +48,30 @@ describe('/flightPaths', () => {
 
     it('responds 404 for an unknown airport', async () => {
       await api.get('/flightPaths').query({ from: SFO, to: 'airport_does_not_exist' }).expect(404);
+    });
+
+    it.each([
+      ['weekDay', { weekDay: 7 }],
+      ['weekDay', { weekDay: 'monday' }],
+      ['limit', { limit: 'abc' }],
+      ['skip', { skip: -1 }],
+    ])('responds 400 for an invalid %s', async (param, query) => {
+      const res = await api.get('/flightPaths').query({ from: SFO, to: LAX, ...query }).expect(400);
+      expect(res.body.message).toContain(`"${param}"`);
+    });
+
+    it('treats a stored airport faa code as a value, not SQL++', async () => {
+      // Airports are user-writable, so their faa code must not be able to change the flights query.
+      const created = await api
+        .post('/airports')
+        .send({ airportname: 'Injection Intl', city: 'Testville', country: 'United States', tz: 'UTC', faa: 'SFO" OR "1"="1' })
+        .expect(201);
+      try {
+        const res = await api.get('/flightPaths').query({ from: created.body.id, to: LAX }).expect(200);
+        expect(res.body.items).toEqual([]);
+      } finally {
+        await AirportModel.removeById(created.body.id);
+      }
     });
   });
 

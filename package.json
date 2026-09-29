@@ -7,7 +7,7 @@
     "start": "ts-node-dev --respawn src/index.ts",
     "test": "jest --runInBand",
     "test:unit": "jest --selectProjects unit",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p test",
     "couchbase:start": "bash scripts/start-couchbase.sh"
   },
   "repository": {
@@ -31,6 +31,7 @@
     "yamljs": "0.3.0"
   },
   "devDependencies": {
+    "@jest/globals": "29.7.0",
     "@types/express": "4.17.25",
     "@types/node": "16.4.13",
     "@types/supertest": "7.2.1",
