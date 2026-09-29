@@ -1,4 +1,6 @@
 import { model, Schema } from 'ottoman';
+// Models register on the default Ottoman instance, so make sure it exists first.
+import '../ottoman-global-config';
 import GeolocationSchema from '../shared/geolocation.schema';
 
 const AirportSchema = new Schema({
@@ -11,7 +13,7 @@ const AirportSchema = new Schema({
   tz: { type: String, required: true },
 });
 
-AirportSchema.index.findByName = { by: 'name', type: 'n1ql' };
+AirportSchema.index.findByName = { by: 'airportname', type: 'n1ql' };
 
 const AirportModel = model('airport', AirportSchema);
 

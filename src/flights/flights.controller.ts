@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import FlightModel from './flights.model';
 import AirportModel from './../airports/airports.model';
 import makeResponse from '../shared/make.response';
-import { Query, getDefaultInstance } from 'ottoman';
+import { Query, getDefaultInstance, ValidationError } from 'ottoman';
 import { CustomRoute } from '../shared/custom.route';
 
 class FlightController extends CustomRoute {
@@ -20,18 +20,24 @@ class FlightController extends CustomRoute {
     this.router.get('/', async (req: Request, res: Response) => {
       await makeResponse(res, async () => {
         const { limit, skip, from, to, weekDay } = req.query;
-        const fromDocument = await AirportModel.findById(from, { select: 'faa' });
-        const toDocument = await AirportModel.findById(to, { select: 'faa' });
+        if (!from || !to) {
+          throw new ValidationError('Query params "from" and "to" are required');
+        }
+        const fromDocument = await AirportModel.findById(String(from), { select: 'faa' });
+        const toDocument = await AirportModel.findById(String(to), { select: 'faa' });
         const conn = getDefaultInstance();
-        const buckeName = conn.bucketName;
-        const query = new Query({}, `${buckeName} as r UNNEST r.schedule as s`)
+        const keyspace = `\`${conn.bucketName}\`.inventory`;
+        const where: Record<string, unknown> = {
+          'r.sourceairport': fromDocument.faa,
+          'r.destinationairport': toDocument.faa,
+        };
+        if (weekDay !== undefined) {
+          where['s.day'] = Number(weekDay);
+        }
+        const query = new Query({}, `${keyspace}.route as r UNNEST r.schedule as s`)
           .select('a.name, s.flight, s.utc, s.day, r.sourceairport, r.destinationairport, r.equipment')
-          .plainJoin(`JOIN \`${buckeName}\` as a on keys r.airlineid`)
-          .where({
-            'r.sourceairport': fromDocument.faa,
-            'r.destinationairport': toDocument.faa,
-            's.day': weekDay
-          })
+          .plainJoin(`JOIN ${keyspace}.airline as a ON KEYS r.airlineid`)
+          .where(where)
           .limit(Number(limit || 50))
           .offset(Number(skip || 0))
           .orderBy({ 'a.name': 'ASC' });
@@ -72,7 +78,7 @@ class FlightController extends CustomRoute {
   public put() {
     this.router.put('/:id', async (req: Request, res: Response) => {
       await makeResponse(res, async () => {
-        await AirportModel.replaceById(req.params.id, req.body);
+        await FlightModel.replaceById(req.params.id, req.body);
         res.status(204);
       });
     });

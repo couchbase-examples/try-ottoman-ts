@@ -1,7 +1,11 @@
-import express, { Request, Response, Error } from 'express';
+import path from 'path';
+import express, { NextFunction, Request, Response } from 'express';
 import * as swaggerUi from 'swagger-ui-express';
 import * as YAML from 'yamljs';
 import { ControllerType } from "./shared/controller.type";
+import HotelsController from './hotels/hotels.controller';
+import AirportsController from './airports/airports.controller';
+import FlightController from './flights/flights.controller';
 
 class App {
   public app: express.Application;
@@ -14,12 +18,13 @@ class App {
     this.app.get('/', (req, res) => {
       res.send('I am ready!!');
     });
-    this.app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(YAML.load('./swagger.yaml')));
+    this.app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(YAML.load(path.join(__dirname, '..', 'swagger.yaml'))));
 
-    this.app.use((err: Error, req: Request, res: Response, next) => {
-      return res.status(500).error({ error: err.toString() }).json();
-    });
     this.initializeControllers(controllers);
+
+    this.app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+      return res.status(500).json({ message: err.toString() });
+    });
   }
 
   private initializeControllers(controllers: ControllerType[]) {
@@ -29,12 +34,22 @@ class App {
   }
 
   public listen() {
-    this.app.listen(this.port, () => {
+    return this.app.listen(this.port, () => {
       console.log(`API started at http://localhost:${this.port}`);
       console.log(`API docs at http://localhost:${this.port}/api-docs/`);
     });
   }
 
 }
+
+export const createApp = (port: number) =>
+  new App(
+    [
+      new HotelsController('/hotels'),
+      new AirportsController('/airports'),
+      new FlightController('/flightPaths'),
+    ],
+    port
+  );
 
 export default App;

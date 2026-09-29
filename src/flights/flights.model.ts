@@ -1,4 +1,6 @@
 import { Schema, model } from 'ottoman';
+// Models register on the default Ottoman instance, so make sure it exists first.
+import '../ottoman-global-config';
 
 const FlightSchema = new Schema({
   day: Number,

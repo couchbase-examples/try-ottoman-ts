@@ -1,11 +1,14 @@
 import { addValidators, Schema, model } from 'ottoman';
+// Models register on the default Ottoman instance, so make sure it exists first.
+import '../ottoman-global-config';
 import GeolocationSchema from '../shared/geolocation.schema';
 import LinkType from '../shared/link.type';
 
 addValidators({
   phone: (value: any) => {
     const regex = /^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$/;
-    if (value && !value.match(regex)) {
+    // Ottoman passes missing strings to validators as the string 'undefined'.
+    if (value && value !== 'undefined' && !value.match(regex)) {
       throw new Error('Phone number is invalid.');
     }
   },
