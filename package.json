@@ -42,7 +42,8 @@
     "typescript": "5.9.3"
   },
   "resolutions": {
-    "@types/express-serve-static-core": "4.19.9"
+    "@types/express-serve-static-core": "4.19.9",
+    "underscore": "1.13.8"
   },
   "jest": {
     "testTimeout": 30000,
